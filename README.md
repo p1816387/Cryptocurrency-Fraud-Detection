@@ -81,7 +81,7 @@ It is **not financial advice** or a guarantee of safety.
 
 ## Author
 
-Made with ❤️ by [Your Name](https://github.com/yourusername)
+Made by [Kai Wei & Allen](https://github.com/p1816387)
 
 Feel free to ⭐ the repo if you find it useful!
 
