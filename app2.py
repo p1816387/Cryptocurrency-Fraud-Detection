@@ -1,18 +1,20 @@
 import streamlit as st
 import requests
 import re
-
-#   https://chainwatch.streamlit.app/
+import pandas as pd
+import matplotlib.pyplot as plt
+import matplotlib.ticker as mticker
 
 ETHERSCAN_API_KEY = "EVWY88Y9UDYU4JYTBFHRN7WNPVA253YRTA"
 
+
 # === Functions ===
+
+def is_bitcoin_address(address):
+    return bool(re.match(r"^[13][a-km-zA-HJ-NP-Z0-9]{25,34}$", address))
 
 def is_ethereum_address(address):
     return bool(re.match(r"^0x[a-fA-F0-9]{40}$", address))
-
-def is_bitcoin_address(address):
-    return bool(re.match(r"^[13][a-km-zA-HJ-NP-Z1-9]{25,34}$", address))
 
 @st.cache_data(show_spinner=False)
 def fetch_scam_bitcoin_addresses():
@@ -20,19 +22,14 @@ def fetch_scam_bitcoin_addresses():
     try:
         response = requests.get(url)
         response.raise_for_status()
-        btc_pattern = re.compile(r'\b[13][a-km-zA-HJ-NP-Z1-9]{25,34}\b')
+        btc_pattern = re.compile(r'\b[13][a-km-zA-HJ-NP-Z0-9]{25,34}\b')
         addresses = btc_pattern.findall(response.text)
         return set(addresses)
     except requests.RequestException:
         return set()
 
 def check_bitcoin_scam_activity(address, scam_list):
-    results = {}
-    if address in scam_list:
-        results["reported"] = True
-    else:
-        results["reported"] = False
-
+    results = {"reported": address in scam_list}
     url = f"https://blockchain.info/rawaddr/{address}"
     try:
         response = requests.get(url)
@@ -114,6 +111,36 @@ def check_ethereum_scam_activity(address):
         results["error"] = str(e)
     return results
 
+def plot_metrics(metrics):
+    df = pd.DataFrame({
+        "Metric": ["Inward", "Outward", "Large Tx", "High Recipient Tx"],
+        "Count": [
+            metrics.get("inward", 0),
+            metrics.get("outward", 0),
+            metrics.get("large_tx", 0),
+            metrics.get("high_recipients", 0)
+        ]
+    })
+
+    colors = ['#3498db', '#f39c12', '#e74c3c' if df.loc[2, "Count"] > 2 else '#2ecc71',
+              '#e74c3c' if df.loc[3, "Count"] > 2 else '#2ecc71']
+
+    fig, ax = plt.subplots(figsize=(8, 4.5))
+    bars = ax.barh(df["Metric"], df["Count"], color=colors, edgecolor='black', linewidth=0.5)
+
+    ax.set_xlabel("Transaction Count", fontsize=11)
+    ax.set_title("📊 Address Transaction Behavior", fontsize=13, fontweight='bold')
+    ax.xaxis.set_major_locator(mticker.MaxNLocator(integer=True))
+    ax.grid(axis='x', linestyle='--', alpha=0.7)
+
+    for bar in bars:
+        width = bar.get_width()
+        ax.annotate(f'{width}', xy=(width, bar.get_y() + bar.get_height() / 2),
+                    xytext=(5, 0), textcoords='offset points',
+                    ha='left', va='center', fontsize=10)
+
+    st.pyplot(fig)
+
 # === Streamlit App ===
 
 st.set_page_config(page_title="Crypto Scam Address Detector", page_icon="🕵️‍♂️")
@@ -142,6 +169,7 @@ if st.button("Check Scam Status"):
                 st.write(f"📤 Total Outward Transfers: `{result['outward']}`")
                 st.write(f"💰 Large Transactions (>1 BTC): `{result['large_tx']}`")
                 st.write(f"🔀 High-Recipient Transactions (>10): `{result['high_recipients']}`")
+                plot_metrics(result)
 
                 if result.get("behavior_scam"):
                     st.warning("⚠️ Behavioral pattern suggests potential scam activity.")
@@ -158,6 +186,12 @@ if st.button("Check Scam Status"):
                 st.write(f"📥 Total Inward Transfers: `{result['inward']}`")
                 st.write(f"📤 Total Outward Transfers: `{result['outward']}`")
                 st.write(f"💰 Large Transactions (>1 ETH): `{result['large_tx']}`")
+                plot_metrics({
+                    "inward": result["inward"],
+                    "outward": result["outward"],
+                    "large_tx": result["large_tx"],
+                    "high_recipients": 0
+                })
 
                 if result.get("behavior_scam"):
                     st.warning("⚠️ Behavioral pattern suggests potential scam activity.")
